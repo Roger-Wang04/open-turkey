@@ -594,7 +594,22 @@ func verificarPoliticaFirefox(padroesEsperados []string) bool {
 
 	blocksExistentes := extrairStringsDeInterface(websiteFilter["Block"])
 
-	return mesmoConjunto(blocksExistentes, padroesEsperados)
+	if !mesmoConjunto(blocksExistentes, padroesEsperados) {
+		return false
+	}
+
+	// Verificação extra (fork): a política DNSOverHTTPS desativada também
+	// precisa estar presente — sem ela o Firefox pode usar DoH e burlar
+	// o /etc/hosts. Se alguém remover essa chave, o daemon reaplica.
+	doh, ok := policies["DNSOverHTTPS"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if habilitado, ok := doh["Enabled"].(bool); !ok || habilitado {
+		return false
+	}
+
+	return true
 }
 
 // =============================================================================
@@ -663,7 +678,17 @@ func verificarPoliticaChromium(caminhoArquivo string, padroesEsperados []string)
 
 	blocksExistentes := extrairStringsDeInterface(politica["URLBlocklist"])
 
-	return mesmoConjunto(blocksExistentes, padroesEsperados)
+	if !mesmoConjunto(blocksExistentes, padroesEsperados) {
+		return false
+	}
+
+	// Verificação extra (fork): DnsOverHttpsMode=off precisa estar presente,
+	// senão o navegador pode usar DoH e burlar o /etc/hosts.
+	if modo, ok := politica["DnsOverHttpsMode"].(string); !ok || modo != "off" {
+		return false
+	}
+
+	return true
 }
 
 // =============================================================================
