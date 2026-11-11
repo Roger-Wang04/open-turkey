@@ -19,6 +19,10 @@ INSTALL_PATH=/usr/local/bin
 # /etc/sudoers diretamente — assim a regra e isolada e facil de remover
 SUDOERS_FILE=/etc/sudoers.d/open-turkey
 
+# Usuario autorizado a executar o open-turkey-bin como root sem senha
+# (hardening: original permitia ALL — qualquer usuario do sistema)
+SUDO_USER_MAKEFILE?=rogerw
+
 # Caminho para instalar o arquivo de servico do systemd
 SERVICE_PATH=/etc/systemd/system
 
@@ -75,18 +79,18 @@ exec sudo $(INSTALL_PATH)/$(BINARY_INSTALLED) "$$@"\n' > $(INSTALL_PATH)/$(BINAR
 	chmod 755 $(INSTALL_PATH)/$(BINARY_NAME)
 
 	@echo ">> Configurando sudoers para execucao sem senha..."
-	# Regra sudoers: permite que QUALQUER usuario execute open-turkey-bin
-	# como root, sem precisar digitar senha.
-	#   ALL ALL=(root) NOPASSWD: /usr/local/bin/open-turkey-bin
-	#    |   |    |       |
-	#    |   |    |       +-- nao pede senha
-	#    |   |    +---------- executa como root
-	#    |   +--------------- qualquer usuario
-	#    +------------------- em qualquer host
+	# Regra sudoers: permite que SOMENTE o usuario dono do sistema execute
+	# open-turkey-bin como root, sem precisar digitar senha.
+	#   <usuario> ALL=(root) NOPASSWD: /usr/local/bin/open-turkey-bin
+	#
+	# HARDENING (fork Roger-Wang04): a regra original usava "ALL ALL=..."
+	# (qualquer usuario do sistema podia rodar o binario como root).
+	# Restringimos ao usuario especifico definido em SUDO_USER_MAKEFILE,
+	# padrao "rogerw".
 	#
 	# chmod 440: somente root e o grupo root podem ler o arquivo.
 	# Isso e obrigatorio — o sudo recusa arquivos com permissoes abertas.
-	printf 'ALL ALL=(root) NOPASSWD: $(INSTALL_PATH)/$(BINARY_INSTALLED)\n' > $(SUDOERS_FILE)
+	printf '$(SUDO_USER_MAKEFILE) ALL=(root) NOPASSWD: $(INSTALL_PATH)/$(BINARY_INSTALLED)\n' > $(SUDOERS_FILE)
 	chmod 440 $(SUDOERS_FILE)
 
 	@echo ">> Instalando o servico do systemd..."
