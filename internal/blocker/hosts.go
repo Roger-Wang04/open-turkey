@@ -194,31 +194,42 @@ func IsHostsApplied(domains []string) bool {
 	// nossa seção (improvável, mas possível).
 	secao := extrairSecaoOpenTurkey(texto)
 
-	// Verificação 3: Cada domínio esperado está presente?
+	// Verificação 3 (otimizada): montar um conjunto com as linhas da seção.
+	//
+	// Implementação anterior: para cada domínio, um strings.Contains varria a
+	// seção inteira (~800KB com blocklists comunitárias de 20k+ domínios),
+	// resultando em dezenas de GB de comparações por ciclo de 5s do daemon.
+	// Agora percorremos a seção UMA vez montando um map e consultamos por
+	// membership — O(n + m) em vez de O(n × m) — evitando CPU constante alto.
+	lineSet := make(map[string]bool)
+	for _, linha := range strings.Split(secao, "\n") {
+		linha = strings.TrimSpace(linha)
+		if linha != "" {
+			lineSet[linha] = true
+		}
+	}
+
+	// Verificação 4: Cada domínio esperado está presente?
 	for _, dominio := range domains {
 		dominio = NormalizarDominio(dominio)
 		if dominio == "" {
 			continue
 		}
 
-		// Verificamos se a linha "0.0.0.0 dominio" existe na seção.
-		// Usamos a linha completa para evitar falsos positivos
-		// (ex: "facebook.com.br" casando com "facebook.com").
-		entradaPrincipal := fmt.Sprintf("0.0.0.0 %s", dominio)
-		if !strings.Contains(secao, entradaPrincipal) {
+		// Verificamos a linha completa "0.0.0.0 dominio" para evitar falsos
+		// positivos (ex: "facebook.com.br" casando com "facebook.com").
+		if !lineSet[fmt.Sprintf("0.0.0.0 %s", dominio)] {
 			return false
 		}
 
 		// Verificamos também a versão alternativa (com ou sem www.)
 		if strings.HasPrefix(dominio, "www.") {
 			semWWW := strings.TrimPrefix(dominio, "www.")
-			entradaAlternativa := fmt.Sprintf("0.0.0.0 %s", semWWW)
-			if !strings.Contains(secao, entradaAlternativa) {
+			if !lineSet[fmt.Sprintf("0.0.0.0 %s", semWWW)] {
 				return false
 			}
 		} else {
-			entradaComWWW := fmt.Sprintf("0.0.0.0 www.%s", dominio)
-			if !strings.Contains(secao, entradaComWWW) {
+			if !lineSet[fmt.Sprintf("0.0.0.0 www.%s", dominio)] {
 				return false
 			}
 		}

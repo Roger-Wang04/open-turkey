@@ -277,6 +277,16 @@ func removerPrefixoWWW(host string) string {
 	return host
 }
 
+// maxPolicyEntries é o limite de entradas suportado pelos mecanismos de
+// política de navegador. O Chromium ignora entradas do URLBlocklist além de
+// 1000 (ver https://chromeenterprise.google/policies/ → URLBlocklist), e o
+// Firefox ignora o WebsiteFilter INTEIRO se ele tiver mais de 1000 padrões
+// (limite documentado da política). Como blocklists comunitárias de NSFW
+// têm dezenas de milhares de domínios, truncamos aqui para o navegador nunca
+// rejeitar a política por completo. As demais camadas (hosts, firewall DoH)
+// continuam cobrindo TODOS os domínios.
+const maxPolicyEntries = 1000
+
 // gerarPadroesFirefox converte domínios em match-patterns para a política
 // WebsiteFilter do Firefox.
 //
@@ -314,6 +324,12 @@ func gerarPadroesFirefox(domains []string) []string {
 		padroes = append(padroes, p)
 	}
 	sort.Strings(padroes)
+
+	// Trunca no limite do navegador (ver maxPolicyEntries). Como já ordenamos,
+	// o corte é determinístico — o daemon verifica exatamente este subconjunto.
+	if len(padroes) > maxPolicyEntries {
+		padroes = padroes[:maxPolicyEntries]
+	}
 	return padroes
 }
 
@@ -352,6 +368,12 @@ func gerarFiltrosChromium(domains []string) []string {
 		filtros = append(filtros, f)
 	}
 	sort.Strings(filtros)
+
+	// Trunca no limite do navegador (ver maxPolicyEntries), pelo mesmo motivo
+	// do gerador do Firefox. Determinístico por causa da ordenação.
+	if len(filtros) > maxPolicyEntries {
+		filtros = filtros[:maxPolicyEntries]
+	}
 	return filtros
 }
 
