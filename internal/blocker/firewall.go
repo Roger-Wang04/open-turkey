@@ -144,6 +144,15 @@ func ApplyFirewall(domains []string) error {
 	// Para cada domínio (ex: "youtube.com"), precisamos descobrir quais
 	// endereços IP ele usa. Um domínio pode ter vários IPs (ex: o Google
 	// tem dezenas). Bloqueamos todos eles.
+	//
+	// IMPORTANTE (fork Roger-Wang04): o daemon aplica o /etc/hosts ANTES
+	// desta camada, então net.LookupHost devolve a entrada do próprio hosts
+	// (0.0.0.0) em vez do IP real do site. Regras "-d 0.0.0.0" nunca casam
+	// tráfego real e, com blocklists de 20k+ domínios, geravam dezenas de
+	// milhares de regras duplicadas inúteis na chain. Agora pulamos IPs não
+	// especificados/loopback e deduplicamos os IPs bloqueados.
+	vistos := make(map[string]bool)
+
 	for _, domain := range domains {
 		domain = NormalizarDominio(domain)
 		if domain == "" {
@@ -169,6 +178,18 @@ func ApplyFirewall(domains []string) error {
 			if strings.Contains(ip, ":") {
 				continue
 			}
+
+			// Pula IPs sem sentido para bloqueio: 0.0.0.0 (retorno do nosso
+			// próprio /etc/hosts), 127.0.0.1 e afins.
+			if parsed := net.ParseIP(ip); parsed == nil || parsed.IsUnspecified() || parsed.IsLoopback() {
+				continue
+			}
+
+			// Evita regras duplicadas quando vários domínios compartilham CDN.
+			if vistos[ip] {
+				continue
+			}
+			vistos[ip] = true
 
 			// -A adiciona (append) a regra ao final da chain
 			// -d especifica o IP de destino (destination)
