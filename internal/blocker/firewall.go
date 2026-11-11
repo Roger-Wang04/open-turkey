@@ -69,23 +69,30 @@ import (
 // ao Open Turkey. O hífen é permitido em nomes de chains.
 const chainName = "OPEN-TURKEY"
 
-// dohServersIPv4 contém os endereços IPv4 dos servidores DNS-over-HTTPS
-// mais utilizados. Bloqueamos esses IPs na porta 443 (HTTPS) para impedir
+// dohEndpointsIPv4 contém endereços/redes IPv4 dos servidores DNS-over-HTTPS
+// mais utilizados. Bloqueamos esses destinos na porta 443 (HTTPS) para impedir
 // que navegadores façam consultas DNS criptografadas, o que contornaria
 // nosso bloqueio via /etc/hosts.
 //
-// Por que esses especificamente?
-// - Cloudflare (1.1.1.1, 1.0.0.1): usado pelo Firefox por padrão
-// - Google (8.8.8.8, 8.8.4.4): usado pelo Chrome e Android
-// - Quad9 (9.9.9.9, 149.112.112.112): alternativa popular focada em segurança
+// ATENÇÃO à lista — além dos IPs clássicos:
 //
-// Nota: endereços IPv6 desses provedores (como 2606:4700:4700::1111) NÃO
-// são bloqueados aqui porque usamos apenas iptables (IPv4). Veja a
-// limitação documentada no cabeçalho do arquivo.
-var dohServersIPv4 = []string{
+//   - Cloudflare mantém faixas DEDICADAS a DoH em 162.159.36.0/24 e
+//     162.159.46.0/24. É para elas que o hostname mozilla.cloudflare-dns.com
+//     (usado pelo Firefox quando o rollout de DoH liga o "Secure DNS")
+//     resolve — bloquear só 1.1.1.1 não bastava. Esses /24 são anycast
+//     exclusivo de DoH, então o bloqueio em :443 não afeta outros serviços.
+//
+//   - AdGuard DoH (94.140.14.49/50 e 94.140.15.49/50) e CleanBrowsing
+//     (185.228.168.9 e 185.228.169.9), provedores comuns de DNS filtrado.
+//
+// Nota: endereços IPv6 desses provedores NÃO são bloqueados aqui porque
+// usamos apenas iptables (IPv4). Máquinas sem rota IPv6 não têm essa fuga.
+var dohEndpointsIPv4 = []string{
 	// Cloudflare — provedor de DNS mais rápido do mundo, padrão do Firefox
 	"1.1.1.1",
 	"1.0.0.1",
+	"162.159.36.0/24",
+	"162.159.46.0/24",
 
 	// Google — provedor de DNS mais popular do mundo
 	"8.8.8.8",
@@ -94,6 +101,16 @@ var dohServersIPv4 = []string{
 	// Quad9 — provedor focado em segurança e privacidade
 	"9.9.9.9",
 	"149.112.112.112",
+
+	// AdGuard DoH
+	"94.140.14.49",
+	"94.140.14.50",
+	"94.140.15.49",
+	"94.140.15.50",
+
+	// CleanBrowsing DoH
+	"185.228.168.9",
+	"185.228.169.9",
 }
 
 // =============================================================================
@@ -292,7 +309,7 @@ func IsFirewallApplied() bool {
 // No entanto, como bloqueamos apenas a porta 443 (HTTPS), a resolução
 // DNS normal na porta 53 (UDP/TCP) continua funcionando normalmente.
 func BlockDoH() error {
-	for _, ip := range dohServersIPv4 {
+	for _, ip := range dohEndpointsIPv4 {
 		// -A OPEN-TURKEY: adiciona à nossa chain
 		// -d <ip>: destino é o servidor DoH
 		// -p tcp: protocolo TCP (HTTPS usa TCP)

@@ -482,7 +482,21 @@ func aplicarPoliticaFirefox(padroes []string) error {
 		blocksFinais = append(blocksFinais, p)
 	}
 
-	// Passo 6: Remontar a estrutura JSON e gravar o arquivo.
+	// Passo 6: Desativar DNS-over-HTTPS (DoH) por política.
+	//
+	// Se o Firefox usar DoH ("Secure DNS"), ele resolve domínios via HTTPS
+	// (ex: mozilla.cloudflare-dns.com) e NUNCA consulta o /etc/hosts — o que
+	// burlaria a camada 1. O rollout automático do DoH (ativo em várias
+	// regiões, incluindo GB) liga isso sozinho, sem o usuário pedir.
+	// A política empresarial "DNSOverHTTPS" desativa o DoH E trava a
+	// configuração — o usuário não consegue religar pelos ajustes do
+	// navegador. A resolução volta para o DNS do sistema, onde o
+	// /etc/hosts aplica.
+	policies["DNSOverHTTPS"] = map[string]interface{}{
+		"Enabled": false,
+	}
+
+	// Passo 7: Remontar a estrutura JSON e gravar o arquivo.
 	websiteFilter["Block"] = blocksFinais
 	policies["WebsiteFilter"] = websiteFilter
 	politicaRaiz["policies"] = policies
@@ -528,8 +542,9 @@ func removerPoliticaFirefox() error {
 		return nil
 	}
 
-	// Passo 4: Remover o WebsiteFilter.
+	// Passo 4: Remover o WebsiteFilter e o DNSOverHTTPS (ambos são nossos).
 	delete(policies, "WebsiteFilter")
+	delete(policies, "DNSOverHTTPS")
 
 	// Passo 5: Decidir se deletamos o arquivo ou gravamos sem WebsiteFilter.
 	// Se "policies" ficou vazio após remover WebsiteFilter, o arquivo
@@ -616,8 +631,13 @@ func aplicarPoliticaChromium(caminhoArquivo string, padroes []string) error {
 	// Passo 2: Montar a estrutura de política.
 	// O Chromium lê a chave "URLBlocklist" automaticamente — não precisa
 	// de uma estrutura "policies" aninhada como o Firefox.
+	//
+	// "DnsOverHttpsMode": "off" desativa o DoH no Chromium/Chrome/Brave
+	// pelo mesmo motivo do Firefox (ver aplicarPoliticaFirefox): com DoH o
+	// navegador ignora o /etc/hosts. A política trava a configuração.
 	politica := map[string]interface{}{
-		"URLBlocklist": padroes,
+		"URLBlocklist":    padroes,
+		"DnsOverHttpsMode": "off",
 	}
 
 	return gravarJSON(caminhoArquivo, politica)
